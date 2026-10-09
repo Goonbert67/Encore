@@ -1,10 +1,12 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
+/* build 4 */
+const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const REDIRECT=location.origin+location.pathname;
-$("redirectUri").textContent=REDIRECT;
+$$("redirectUri").textContent=REDIRECT;
 
 /* ================= Spotify ================= */
 const SCOPES="user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-recently-played user-top-read playlist-modify-private playlist-modify-public user-library-modify user-library-read";
@@ -14,7 +16,7 @@ const clientId=()=>LS.get("encore.spClient")||"";
 const b64url=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 
 async function spLogin(){
-  const id=$("spClient").value.trim();
+  const id=$$("spClient").value.trim();
   if(!/^[0-9a-f]{32}$/i.test(id)){toast("That doesn't look like a Client ID. It's 32 letters and numbers.");return}
   LS.set("encore.spClient",id);
   const verifier=b64url(crypto.getRandomValues(new Uint8Array(48)));
@@ -151,28 +153,28 @@ function claudeErr(e){
 }
 
 /* ================= Settings + connection state ================= */
-$("spClient").value=clientId();
-$("clKey").value=clKey();
-$("clModel").value=clModel();
-$("spConnect").onclick=spLogin;
-$("spDisconnect").onclick=()=>{tok=null;LS.set("encore.sp",null);updateConn();toast("Spotify disconnected from Encore")};
-$("clModel").onchange=e=>LS.set("encore.clModel",e.target.value);
-$("clSave").onclick=async()=>{
-  const k=$("clKey").value.trim(),msg=$("clMsg");msg.classList.remove("err");
+$$("spClient").value=clientId();
+$$("clKey").value=clKey();
+$$("clModel").value=clModel();
+$$("spConnect").onclick=spLogin;
+$$("spDisconnect").onclick=()=>{tok=null;LS.set("encore.sp",null);updateConn();toast("Spotify disconnected from Encore")};
+$$("clModel").onchange=e=>LS.set("encore.clModel",e.target.value);
+$$("clSave").onclick=async()=>{
+  const k=$$("clKey").value.trim(),msg=$$("clMsg");msg.classList.remove("err");
   if(!/^sk-ant-/.test(k)){msg.textContent="Claude API keys start with sk-ant-.";msg.classList.add("err");return}
   LS.set("encore.clKey",k);msg.textContent="Checking the key…";
   try{await claude("Reply with just: OK",{maxTokens:5,model:"claude-haiku-5-5"});msg.textContent="Key saved and working.";}
   catch(e){msg.textContent=claudeErr(e);msg.classList.add("err")}
   updateConn();
 };
-$("clForget").onclick=()=>{LS.set("encore.clKey",null);$("clKey").value="";$("clMsg").textContent="Key removed from this browser.";updateConn()};
+$$("clForget").onclick=()=>{LS.set("encore.clKey",null);$$("clKey").value="";$$("clMsg").textContent="Key removed from this browser.";updateConn()};
 function updateConn(){
-  $("connSpotify").textContent=tok?"Connected":"Not connected";
-  $("spConnect").textContent=tok?"Reconnect":"Connect Spotify";
-  $("spDisconnect").hidden=!tok;
-  $("connClaude").textContent=clKey()?"Key saved":"No key";
-  $("clForget").hidden=!clKey();
-  $("topSave").disabled=!tok;$("topPlay").disabled=!tok;
+  $$("connSpotify").textContent=tok?"Connected":"Not connected";
+  $$("spConnect").textContent=tok?"Reconnect":"Connect Spotify";
+  $$("spDisconnect").hidden=!tok;
+  $$("connClaude").textContent=clKey()?"Key saved":"No key";
+  $$("clForget").hidden=!clKey();
+  $$("topSave").disabled=!tok;$$("topPlay").disabled=!tok;
 }
 
 /* ================= history helpers for prompts ================= */
@@ -292,7 +294,7 @@ async function streamPicks(prompt,list,{signal,name,maxTokens}){
 /* ================= Similar vibe ================= */
 let simCtl=null,shown=[];
 async function findSimilar(more){
-  const out=$("simOut"),btn=$("simBtn");
+  const out=$("simOut"),btn=$$("simBtn");
   if(!clKey()){setStatus(out,"Add your Claude API key in Settings to get picks.",true,true);return}
   if(!SEED)return;
   simCtl&&simCtl.abort();const ctl=simCtl=new AbortController();
@@ -321,14 +323,14 @@ ${LINE_FORMAT} Exactly 10 lines.`;
   finally{if(simCtl===ctl)btn.disabled=false}
 }
 window.findSimilar=findSimilar;
-$("simBtn").onclick=()=>findSimilar(false);
-$("useNowBtn").onclick=()=>{if(NOW){setSeed(NOW.name,NOW.artist,NOW.img?{u:NOW.img}:null);findSimilar(false)}};
+$$("simBtn").onclick=()=>findSimilar(false);
+$$("useNowBtn").onclick=()=>{if(NOW){setSeed(NOW.name,NOW.artist,NOW.img?{u:NOW.img}:null);findSimilar(false)}};
 // keep "More like these" in the pick list's action row
 new MutationObserver(()=>{const acts=$("simOut").querySelector('[data-role="acts"]');if(acts&&!acts.querySelector("#moreBtn")&&shown.length){acts.insertAdjacentHTML("afterbegin",'<button class="btn" id="moreBtn">More like these</button>');$("moreBtn").onclick=()=>findSimilar(true)}}).observe($("simOut"),{childList:true});
 
 /* ================= Playlist from an idea ================= */
-$("ideaBtn").onclick=async()=>{
-  const out=$("ideaOut"),btn=$("ideaBtn"),idea=$("ideaBox").value.trim();
+$$("ideaBtn").onclick=async()=>{
+  const out=$("ideaOut"),btn=$$("ideaBtn"),idea=$("ideaBox").value.trim();
   if(!idea){setStatus(out,"Describe the playlist first.",true);return}
   if(!clKey()){setStatus(out,"Add your Claude API key in Settings to build playlists.",true,true);return}
   btn.disabled=true;thinking(out,"Claude is picking songs…");
@@ -344,7 +346,7 @@ ${LINE_FORMAT} Exactly 25 lines.`;
 };
 
 /* ================= Paste a list ================= */
-$("pasteBtn").onclick=async()=>{
+$$("pasteBtn").onclick=async()=>{
   const out=$("pasteOut");
   const items=$("pasteBox").value.split(/\n+/).map(l=>l.replace(/^\s*\d+[.)]\s*/,"").trim()).filter(Boolean).map(l=>{
     let m=l.match(/^(.+?)\s+by\s+(.+)$/i);if(m)return {title:m[1],artist:m[2]};
@@ -356,7 +358,7 @@ $("pasteBtn").onclick=async()=>{
 };
 
 /* ================= Top tracks → playlist (exact songs from your history) ================= */
-$("topSave").onclick=async e=>{
+$$("topSave").onclick=async e=>{
   if(!tok){toast("Connect Spotify in Settings first.");return}
   const [i0,i1,label]=rangeBounds(range),g=agg(i0,i1);
   const uris=g.tracks.map(t=>D.tracks[t.k][3]).filter(Boolean).slice(0,30);
@@ -369,7 +371,7 @@ $("topSave").onclick=async e=>{
 /* ================= Taste profile ================= */
 let profCtl=null;
 async function writeProfile(roast){
-  const out=$("profileOut"),st=$("profileStatus"),stop=$("profileStop");
+  const out=$("profileOut"),st=$("profileStatus"),stop=$$("profileStop");
   const fail=m=>{st.hidden=false;st.textContent=m;st.classList.add("err")};
   if(!clKey())return fail("Add your Claude API key in Settings first.");
   if(D.meta.source!=="import")return fail("Import your Spotify export first, so Claude has your real history to read.");
@@ -383,9 +385,9 @@ async function writeProfile(roast){
   catch(e){if(e&&e.text)paint(e.text);else if(e&&e.code!=="cancelled")out.hidden=true;if(e&&e.code!=="cancelled")fail(claudeErr(e))}
   finally{stop.hidden=true}
 }
-$("profileBtn").onclick=()=>writeProfile(false);
-$("roastBtn").onclick=()=>writeProfile(true);
-$("profileStop").onclick=()=>profCtl&&profCtl.abort();
+$$("profileBtn").onclick=()=>writeProfile(false);
+$$("roastBtn").onclick=()=>writeProfile(true);
+$$("profileStop").onclick=()=>profCtl&&profCtl.abort();
 
 /* ================= Live: now playing + recent plays into history ================= */
 async function pollNow(){
@@ -395,7 +397,7 @@ async function pollNow(){
     const it=j&&j.item&&j.currently_playing_type==="track"?j.item:null;
     NOW=it?{name:it.name,artist:it.artists.map(a=>a.name).join(", "),album:it.album&&it.album.name,url:it.external_urls&&it.external_urls.spotify,img:pickImg(it.album&&it.album.images,250),playing:!!j.is_playing,device:j.device&&j.device.name}:null;
   }catch(e){NOW=null}
-  $("useNowBtn").hidden=!NOW;renderLastCard();
+  $$("useNowBtn").hidden=!NOW;renderLastCard();
 }
 
 /* ================= Playback (Premium) ================= */
@@ -430,7 +432,7 @@ document.addEventListener("click",e=>{
   const p=e.target.closest("[data-play]");if(p){play({uris:[p.dataset.play]});return}
   const c=e.target.closest("[data-ctl]");if(c)control(c.dataset.ctl);
 });
-$("topPlay").onclick=()=>{const [i0,i1]=rangeBounds(range),g=agg(i0,i1);const uris=g.tracks.map(t=>D.tracks[t.k][3]).filter(Boolean).slice(0,50);if(!uris.length){toast("No Spotify links in this range.");return}play({uris})};
+$$("topPlay").onclick=()=>{const [i0,i1]=rangeBounds(range),g=agg(i0,i1);const uris=g.tracks.map(t=>D.tracks[t.k][3]).filter(Boolean).slice(0,50);if(!uris.length){toast("No Spotify links in this range.");return}play({uris})};
 
 async function pollRecent(){
   if(!tok||document.hidden||!D||D.meta.source!=="import")return;
