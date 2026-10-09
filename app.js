@@ -1,7 +1,7 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
-/* build 7 */
+/* build 8 */
 const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -418,21 +418,23 @@ async function play(body){
     if(!dev){toast("Open Spotify on your PC or phone first, then press play again.");return}
     const q="?device_id="+encodeURIComponent(dev.id);
     if(!body){await sp("/me/player/play"+q,{method:"PUT"});setTimeout(pollNow,800);return}
-    const uris=body.uris||[];const first=uris[0];
-    await sp("/me/player/play"+q,{method:"PUT",body:JSON.stringify({uris,position_ms:0})});
-    // check that Spotify actually started it; the desktop app sometimes stops instead
-    await sleep(1500);
-    let st=await sp("/me/player");
-    const ok=()=>st&&st.is_playing&&st.item&&(st.item.uri===first||(st.item.linked_from&&st.item.linked_from.uri===first));
-    if(!ok()){
-      // fallback that the desktop app handles reliably: queue the song, then skip to it
-      await sp("/me/player/queue?uri="+encodeURIComponent(first)+"&device_id="+encodeURIComponent(dev.id),{method:"POST"});
-      await sp("/me/player/next?device_id="+encodeURIComponent(dev.id),{method:"POST"});
-      await sleep(1200);st=await sp("/me/player");
-      if(st&&st.item&&uris.length>1)for(const u of uris.slice(1,20))await sp("/me/player/queue?uri="+encodeURIComponent(u)+"&device_id="+encodeURIComponent(dev.id),{method:"POST"});
+    const uris=body.uris||[],first=uris[0];
+    const state=async()=>{await sleep(1300);return sp("/me/player")};
+    const isOn=st=>st&&st.is_playing&&st.item&&(st.item.uri===first||(st.item.linked_from&&st.item.linked_from.uri===first));
+    // 1) plain play of the list
+    await sp("/me/player/play"+q,{method:"PUT",body:JSON.stringify({uris})});
+    let st=await state();
+    // 2) loaded but paused: resume
+    if(!isOn(st)&&st&&st.item&&(st.item.uri===first||(st.item.linked_from&&st.item.linked_from.uri===first))){await sp("/me/player/play"+q,{method:"PUT"});st=await state()}
+    // 3) desktop app ignored it: play the song inside its album instead, then queue the rest
+    if(!isOn(st)){
+      const t=await sp("/tracks/"+first.split(":").pop());
+      await sp("/me/player/play"+q,{method:"PUT",body:JSON.stringify({context_uri:t.album.uri,offset:{uri:first}})});
+      st=await state();
+      if(isOn(st))for(const u of uris.slice(1,25))await sp("/me/player/queue?uri="+encodeURIComponent(u)+q.replace("?","&"),{method:"POST"});
     }
-    if(st&&st.item)toast(`Playing ${st.item.name} on ${dev.name}`);
-    else toast(`Spotify on ${dev.name} didn't start the song. Try pressing play in the Spotify app once, then again here.`);
+    if(isOn(st))toast(`Playing ${st.item.name} on ${dev.name}`);
+    else toast(`Spotify on ${dev.name} accepted the command but didn't start the song. Details: state=${st?(st.is_playing?"playing ":"paused ")+(st.item?st.item.uri:"no item"):"none"}, device=${dev.type}`);
   }catch(e){toast(playErr(e))}
   setTimeout(pollNow,600);
 }
