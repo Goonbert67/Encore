@@ -1,7 +1,7 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
-/* build 11 */
+/* build 12 */
 const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -284,13 +284,25 @@ const simList=PickList($("simOut"),"sim","Encore · similar vibe",{saving:false}
 
 /* ================= streamed picks: one JSON object per line, shown as they arrive ================= */
 const LINE_FORMAT=`Output format: one song per line, each line a single JSON object like {"title":"…","artist":"…","why":"…"}. No other text, no code fences, no surrounding array.`;
+// pulls every complete {...} object out of streamed text, whatever the line layout
+function objScanner(){
+  let pos=0,depth=0,inStr=false,esc=false,start=-1;
+  return text=>{const out=[];
+    for(;pos<text.length;pos++){const ch=text[pos];
+      if(inStr){if(esc)esc=false;else if(ch==="\\")esc=true;else if(ch==='"')inStr=false;continue}
+      if(ch==='"'){if(depth>0)inStr=true;continue}
+      if(ch==="{"){if(depth===0)start=pos;depth++}
+      else if(ch==="}"&&depth>0){depth--;if(depth===0&&start>=0){out.push(text.slice(start,pos+1));start=-1}}}
+    return out;};
+}
 async function streamPicks(prompt,list,{signal,name,maxTokens}){
-  const picks=[];let seen=0,started=false;
-  const take=line=>{const l=line.trim().replace(/^[\[,\s]+|[\],\s]+$/g,"");if(!l.startsWith("{"))return;let o;try{o=JSON.parse(l)}catch(e){return}const c=cleanPicks([o])[0];if(!c)return;
+  const picks=[],keys=new Set();let started=false;const scan=objScanner();
+  const take=str=>{let o;try{o=JSON.parse(str)}catch(e){return}const c=cleanPicks([o])[0];if(!c)return;
+    const k=coreTitle(c.title)+"|"+mainArtist(c.artist);if(keys.has(k))return;keys.add(k);
+    if(c.kind==="New find"&&playsOf(c.title,c.artist)>0)c.kind="Familiar";
     if(!started){started=true;list.start(name)}picks.push(c);list.add(c)};
-  const text=await claude(prompt,{signal,maxTokens,onText:t=>{const lines=t.split("\n");for(;seen<lines.length-1;seen++)take(lines[seen])}});
-  const lines=text.split("\n");for(;seen<lines.length;seen++)take(lines[seen]);
-  if(!picks.length){const m=text.match(/\[[\s\S]*\]/);if(m){try{cleanPicks(JSON.parse(m[0])).forEach(c=>{if(!started){started=true;list.start(name)}picks.push(c);list.add(c)})}catch(e){}}}
+  try{const text=await claude(prompt,{signal,maxTokens,onText:t=>scan(t).forEach(take)});scan(text).forEach(take)}
+  catch(e){if(started)list.finish();if(!picks.length||e.code==="cancelled")throw e;setTimeout(()=>toast(claudeErr(e)),0);return picks}
   if(started)list.finish();
   if(!picks.length)throw {code:"invalid_json"};
   return picks;
