@@ -1,7 +1,7 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
-/* build 12 */
+/* build 13 */
 const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -125,15 +125,18 @@ async function claude(prompt,{onText,signal,maxTokens=3000,model}={}){
     body:JSON.stringify({model:model||clModel(),max_tokens:maxTokens,stream:!!onText,messages:[{role:"user",content:prompt}]})})}
   catch(e){throw e&&e.name==="AbortError"?{code:"cancelled"}:{code:"network"}}
   if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw {code:"http",status:r.status,message:(j.error&&j.error.message)||r.statusText}}
-  if(!onText){const j=await r.json();return (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("")}
-  const rd=r.body.getReader(),dec=new TextDecoder();let buf="",text="";
+  if(!onText){const j=await r.json();const t=(j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");claude.last={text:t,stop:j.stop_reason};return t}
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf="",text="",stop="";
   try{
     for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
       while((i=buf.indexOf("\n\n"))>=0){const ev=buf.slice(0,i);buf=buf.slice(i+2);const line=ev.split("\n").find(l=>l.startsWith("data:"));if(!line)continue;
         let d;try{d=JSON.parse(line.slice(5))}catch(e){continue}
         if(d.type==="content_block_delta"&&d.delta&&d.delta.type==="text_delta"){text+=d.delta.text;onText(text)}
+        if(d.type==="message_delta"&&d.delta&&d.delta.stop_reason)stop=d.delta.stop_reason;
         if(d.type==="error")throw {code:"http",status:d.error&&d.error.type==="overloaded_error"?529:500,message:d.error&&d.error.message,text}}}
   }catch(e){if(e&&e.name==="AbortError")throw {code:"cancelled",text};throw e.code?e:{code:"network",text}}
+  claude.last={text,stop};
+  if(stop==="max_tokens"&&!text.trim())throw {code:"out_of_room",text};
   return text;
 }
 async function claudeJSON(prompt,opt){const t=await claude(prompt,opt);const m=t.match(/\[[\s\S]*\]/);if(!m)throw {code:"invalid_json"};try{return JSON.parse(m[0])}catch(e){throw {code:"invalid_json"}}}
@@ -142,7 +145,8 @@ function claudeErr(e){
   if(e.code==="no_key")return "Add your Claude API key in Settings first.";
   if(e.code==="cancelled")return "Stopped.";
   if(e.code==="network")return "Couldn't reach Claude. Check your connection and try again.";
-  if(e.code==="invalid_json")return "Claude's answer came back in the wrong format. Try again.";
+  if(e.code==="out_of_room")return "Claude spent its whole answer budget thinking. Try again, or switch to Haiku in Settings.";
+  if(e.code==="invalid_json"){const t=(claude.last&&claude.last.text||"").trim().replace(/\s+/g," ");return "Claude's answer came back in the wrong format"+(claude.last&&claude.last.stop==="max_tokens"?" (it ran out of room)":"")+(t?`: “${t.slice(0,160)}${t.length>160?"…":""}”`:" (it was empty).")+" Try again.";}
   const m=String(e.message||"");
   if(e.status===401)return "Claude rejected the API key. Check it in Settings.";
   if(/credit/i.test(m))return "Your Claude API credit is used up. Top up at console.anthropic.com.";
@@ -334,7 +338,7 @@ ${heavyRotation(80)}
 
 ${LINE_FORMAT} Exactly 10 lines.`;
   try{
-    const picks=await streamPicks(prompt,simList,{signal:ctl.signal,name:`Like ${SEED.name}`,maxTokens:1200});
+    const picks=await streamPicks(prompt,simList,{signal:ctl.signal,name:`Like ${SEED.name}`,maxTokens:6000});
     shown.push(...picks.map(p=>`${p.title} – ${p.artist}`));
   }catch(e){if(e&&e.code==="cancelled")return;if(simCtl===ctl)setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}
   finally{if(simCtl===ctl)btn.disabled=false}
@@ -384,7 +388,7 @@ The mix:
 - 3 songs taken from the old-favourites list above, exact titles and artists. Set "kind" to "Throwback".
 Lean slightly ${mood} this time so each batch feels different. Real, released songs on Spotify, exact titles and main artist names, no artist twice. "why" is one line, 14 words max, about why it fits them.
 ${LINE_FORMAT.replace('{"title":"…","artist":"…","why":"…"}','{"title":"…","artist":"…","why":"…","kind":"…"}')} Exactly 12 lines, mixed order.`;
-  try{await streamPicks(prompt,fyList,{name:"For you",maxTokens:1600});btn.textContent="New picks"}
+  try{await streamPicks(prompt,fyList,{name:"For you",maxTokens:8000});btn.textContent="New picks"}
   catch(e){setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}finally{btn.disabled=false}
 };
 
@@ -401,7 +405,7 @@ ${tasteContext()}
 
 Rules: real, released songs on Spotify; exact titles and main artist names; no more than 2 songs per artist; order them so the playlist flows; "why" is 10 words max.
 ${LINE_FORMAT} Exactly 25 lines.`;
-  try{await streamPicks(prompt,ideaList,{name:idea.length>60?idea.slice(0,57)+"…":idea,maxTokens:2500})}
+  try{await streamPicks(prompt,ideaList,{name:idea.length>60?idea.slice(0,57)+"…":idea,maxTokens:8000})}
   catch(e){setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}finally{btn.disabled=false}
 };
 
@@ -441,7 +445,7 @@ async function writeProfile(roast){
     ?"Roast this listener's music taste. Be playful and sharp, never cruel, and only about their music and listening habits. Reference specific artists, songs, years and numbers from the data. Three short paragraphs, under 150 words total. Second person. No headings, lists or emoji."
     :"Write a taste profile of this listener. Describe their eras, what ties their favourite artists together, and what their habits say about them. Be specific: reference real artists, years and numbers from the data. Warm and witty, three short paragraphs, under 170 words total. Second person. No headings, lists or emoji.";
   const paint=text=>{out.innerHTML=text.split(/\n\s*\n/).map(p=>`<p>${esc(p.trim())}</p>`).join("")};
-  try{await claude(`${ask}\n\n${tasteContext()}`,{signal:profCtl.signal,onText:paint,maxTokens:800})}
+  try{await claude(`${ask}\n\n${tasteContext()}`,{signal:profCtl.signal,onText:paint,maxTokens:4000})}
   catch(e){if(e&&e.text)paint(e.text);else if(e&&e.code!=="cancelled")out.hidden=true;if(e&&e.code!=="cancelled")fail(claudeErr(e))}
   finally{stop.hidden=true}
 }
