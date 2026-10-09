@@ -242,6 +242,12 @@ a.btn{text-decoration:none;color:inherit}
 .cover.has-img::after{display:none}
 .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;max-width:none}
 .pl-name{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:.85rem;min-width:0;width:200px;max-width:100%}
+.play-btn:hover{color:var(--good)}
+.transport{display:flex;align-items:center;gap:6px}
+.transport .icon-btn{color:var(--fg)}
+.transport .icon-btn.big{width:42px;height:42px;background:var(--fg);color:var(--bg)}
+.transport .icon-btn.big:hover{background:var(--accent);color:var(--accent-ink)}
+.transport .icon-btn.big svg{width:20px;height:20px}
 .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:.88rem;z-index:20;max-width:90vw;text-align:center}
 @media (min-width:900px){.toast{bottom:28px}}
 </style>
@@ -312,7 +318,7 @@ a.btn{text-decoration:none;color:inherit}
         <div class="artists" id="topArtists"></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Top tracks</h2><button class="btn small" id="topSave">Save as Spotify playlist</button></div>
+        <div class="panel-head"><h2>Top tracks</h2><div class="row-actions"><button class="btn small" id="topPlay">Play all</button><button class="btn small" id="topSave">Save as Spotify playlist</button></div></div>
         <div class="list" id="topTracks"></div>
       </div>
       <div class="panel">
@@ -472,6 +478,7 @@ const dateStr=(sec,opt={day:"numeric",month:"short",year:"numeric"})=>new Date(s
 const hue=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))%360;return h};
 const initial=s=>(String(s).replace(/^the\s+/i,"").trim()[0]||"?").toUpperCase();
 const cover=(name,cls="",img)=>{const a=img?img.u?` data-img-u="${esc(img.u)}"`:img.t?` data-img-t="${esc(img.t)}" data-img-a="${esc(name)}"`:img.a?` data-img-a="${esc(img.a)}"`:"":"";return `<div class="cover ${cls}" style="--h:${hue(name)}"${a}>${esc(initial(name))}</div>`};
+const PLAYICON='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const SPARK='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>';
 const PLAY_MS=30000, DAY=86400;
 let tt;function toast(m){const el=$("toast");el.textContent=m;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,2600)}
@@ -615,11 +622,12 @@ function agg(i0,i1){
 
 /* ---------- rendering ---------- */
 const trackName=k=>D.tracks[k][0], trackArtist=k=>D.tracks[k][1];
-function trackRow({k,img,name,artist,right,rank,sim=true}){
-  if(!img)img=k!=null&&D.tracks[k][3]?{t:D.tracks[k][3]}:{a:artist};
+function trackRow({k,img,name,artist,right,rank,sim=true,play=true}){
+  const uri=k!=null?D.tracks[k][3]:"";
+  if(!img)img=uri?{t:uri}:{a:artist};
   return `<div class="track">${rank==null?"":`<span class="rank mono">${rank}</span>`}${cover(artist,"",img)}
    <div class="t-main"><div class="t-name" title="${esc(name)}">${esc(name)}</div><div class="t-sub">${esc(artist)}</div></div>
-   <div class="t-end">${right||""}${sim?`<button class="icon-btn" title="Find similar vibe" aria-label="Find songs similar to ${esc(name)}" data-similar="${esc(name)}|${esc(artist)}">${SPARK}</button>`:""}</div></div>`;
+   <div class="t-end">${right||""}${play&&uri?`<button class="icon-btn play-btn" title="Play on Spotify" aria-label="Play ${esc(name)} on Spotify" data-play="${esc(uri)}">${PLAYICON}</button>`:""}${sim?`<button class="icon-btn" title="Find similar vibe" aria-label="Find songs similar to ${esc(name)}" data-similar="${esc(name)}|${esc(artist)}">${SPARK}</button>`:""}</div></div>`;
 }
 const artistTile=(a,i)=>`<div class="artist">${cover(a.n,"round",{a:a.n})}<b title="${esc(a.n)}">${esc(a.n)}</b><small class="mono">#${i+1} · ${fmtH(a.ms)}</small></div>`;
 const bars=(el,rows,{alt,unit="%"}={})=>{const max=Math.max(1,...rows.map(r=>r[1]));$(el).innerHTML=rows.length?rows.map(([l,v,lab])=>`<div class="bar-row"><span title="${esc(l)}">${esc(l)}</span><div class="bar ${alt?"alt":""}"><i style="width:${v/max*100}%"></i></div><span class="mono note" style="text-align:right">${lab??(fmt(v)+unit)}</span></div>`).join(""):'<div class="empty">Not enough data yet.</div>'};
@@ -645,7 +653,7 @@ function renderTop(){
     .map(([a,b,c])=>`<div class="stat"><span class="eyebrow">${a}</span><b class="mono">${b}</b><small>${c}</small></div>`).join("");
   $("topArtists").innerHTML=g.artists.slice(0,12).map(artistTile).join("")||'<div class="empty">No plays in this range.</div>';
   $("topTracks").innerHTML=g.tracks.slice(0,20).map((t,i)=>trackRow({k:t.k,name:trackName(t.k),artist:trackArtist(t.k),rank:i+1,right:`<span class="mono">${fmt(t.p)} plays<br><span class="note">${fmtH(t.ms)}</span></span>`})).join("")||'<div class="empty">No plays in this range.</div>';
-  $("topAlbums").innerHTML=g.albums.slice(0,10).map((a,i)=>trackRow({k:a.k,name:a.n,artist:a.a,rank:i+1,sim:false,right:`<span class="mono">${fmtH(a.ms)}</span>`})).join("")||'<div class="empty">Album names aren\'t in this export.</div>';
+  $("topAlbums").innerHTML=g.albums.slice(0,10).map((a,i)=>trackRow({k:a.k,name:a.n,artist:a.a,rank:i+1,sim:false,play:false,right:`<span class="mono">${fmtH(a.ms)}</span>`})).join("")||'<div class="empty">Album names aren\'t in this export.</div>';
 }
 
 function renderHome(){
@@ -742,8 +750,13 @@ function renderLastCard(){
   const sim=(n,a)=>`<div class="row-actions"><button class="btn ai" data-similar="${esc(n)}|${esc(a)}">${SPARK.replace('<svg','<svg width="16" height="16"')} Find similar vibe</button>${NOW&&NOW.url?`<a class="btn" href="${esc(NOW.url)}" target="_blank" rel="noopener">Open in Spotify ↗</a>`:""}</div>`;
   if(NOW){
     $("lastCard").innerHTML=`${cover(NOW.artist,"",NOW.img?{u:NOW.img}:{a:NOW.artist})}<div style="display:flex;flex-direction:column;gap:8px;min-width:0">
-      <div class="eyebrow" style="color:var(--good)"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>Now playing on Spotify</div>
-      <div><div class="now-title">${esc(NOW.name)}</div><div class="now-meta">${esc(NOW.artist)}${NOW.album?" · "+esc(NOW.album):""}</div></div>${sim(NOW.name,NOW.artist)}</div>`;
+      <div class="eyebrow" style="color:${NOW.playing?"var(--good)":"var(--muted)"}">${NOW.playing?'<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>Now playing on Spotify':"Paused on Spotify"}${NOW.device?" · "+esc(NOW.device):""}</div>
+      <div><div class="now-title">${esc(NOW.name)}</div><div class="now-meta">${esc(NOW.artist)}${NOW.album?" · "+esc(NOW.album):""}</div></div>
+      <div class="transport" role="group" aria-label="Playback">
+        <button class="icon-btn" data-ctl="prev" aria-label="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5.5v13L9.5 12z"/></svg></button>
+        <button class="icon-btn big" data-ctl="toggle" aria-label="${NOW.playing?"Pause":"Play"}">${NOW.playing?'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>':PLAYICON}</button>
+        <button class="icon-btn" data-ctl="next" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5.5v13L14.5 12z"/></svg></button>
+      </div>${sim(NOW.name,NOW.artist)}</div>`;
     return;
   }
   const last=D.ts.length-1;let li=last;while(li>0&&D.ms[li]<PLAY_MS)li--;

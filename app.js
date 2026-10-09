@@ -7,7 +7,7 @@ const REDIRECT=location.origin+location.pathname;
 $("redirectUri").textContent=REDIRECT;
 
 /* ================= Spotify ================= */
-const SCOPES="user-read-currently-playing user-read-playback-state user-read-recently-played user-top-read playlist-modify-private playlist-modify-public user-library-modify user-library-read";
+const SCOPES="user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-recently-played user-top-read playlist-modify-private playlist-modify-public user-library-modify user-library-read";
 const TOKEN_URL="https://accounts.spotify.com/api/token";
 let tok=null;try{tok=JSON.parse(LS.get("encore.sp")||"null")}catch(e){}
 const clientId=()=>LS.get("encore.spClient")||"";
@@ -23,7 +23,7 @@ async function spLogin(){
   LS.set("encore.pkce",JSON.stringify({verifier,state}));
   location.href="https://accounts.spotify.com/authorize?"+new URLSearchParams({client_id:id,response_type:"code",redirect_uri:REDIRECT,code_challenge_method:"S256",code_challenge:challenge,scope:SCOPES,state});
 }
-function saveTok(j){tok={access:j.access_token,refresh:j.refresh_token||(tok&&tok.refresh),exp:Date.now()+((j.expires_in||3600)-60)*1000};LS.set("encore.sp",JSON.stringify(tok))}
+function saveTok(j){tok={access:j.access_token,refresh:j.refresh_token||(tok&&tok.refresh),scope:j.scope||(tok&&tok.scope)||"",exp:Date.now()+((j.expires_in||3600)-60)*1000};LS.set("encore.sp",JSON.stringify(tok))}
 async function handleCallback(){
   const q=new URLSearchParams(location.search);
   if(!q.has("code")&&!q.has("error"))return;
@@ -51,7 +51,7 @@ async function sp(path,opt={}){
   for(let attempt=0;attempt<4;attempt++){
     const r=await fetch("https://api.spotify.com/v1"+path,{...opt,headers:{Authorization:"Bearer "+tok.access,...(opt.body?{"Content-Type":"application/json"}:{})}});
     if(r.status===401&&attempt===0){refreshing=refreshing||refreshTok().finally(()=>refreshing=null);await refreshing;continue}
-    if(r.status===429){await sleep(Math.min(30,+(r.headers.get("Retry-After")||2))*1000);continue}
+    if(r.status===429){const w=Math.min(30,+(r.headers.get("Retry-After")||2));spPauseUntil=Date.now()+w*1000;await sleep(w*1000);continue}
     if(r.status===204||r.status===202)return null;
     const txt=await r.text();let j=null;try{j=txt?JSON.parse(txt):null}catch(e){}
     if(!r.ok)throw {code:r.status===403?"forbidden":"http",status:r.status,message:(j&&j.error&&(j.error.message||j.error))||r.statusText};
@@ -82,7 +82,8 @@ function scanImages(){
     if(tok&&io)io.observe(el);
   });
 }
-function pump(){while(imgActive<3&&imgQ.length){const el=imgQ.shift();if(!el.isConnected)continue;imgActive++;resolveImg(el).then(u=>paint(el,u)).catch(()=>{}).finally(()=>{imgActive--;pump()})}}
+let searchActive=0,spPauseUntil=0;
+function pump(){if(searchActive>0||Date.now()<spPauseUntil){clearTimeout(pump.t);pump.t=setTimeout(pump,500);return}while(imgActive<2&&imgQ.length){const el=imgQ.shift();if(!el.isConnected)continue;imgActive++;resolveImg(el).then(u=>paint(el,u)).catch(()=>{}).finally(()=>{imgActive--;pump()})}}
 function once(key,fn){if(!pending.has(key))pending.set(key,fn().finally(()=>pending.delete(key)));return pending.get(key)}
 async function trackInfo(uri){
   if(IMG.t.has(uri))return IMG.t.get(uri);
@@ -171,7 +172,7 @@ function updateConn(){
   $("spDisconnect").hidden=!tok;
   $("connClaude").textContent=clKey()?"Key saved":"No key";
   $("clForget").hidden=!clKey();
-  $("topSave").disabled=!tok;
+  $("topSave").disabled=!tok;$("topPlay").disabled=!tok;
 }
 
 /* ================= history helpers for prompts ================= */
@@ -201,7 +202,7 @@ function tasteContext(){
 }
 const heavyRotation=n=>D.meta.source!=="import"?"":agg(0,D.ts.length).tracks.slice(0,n).map(t=>`${D.tracks[t.k][0]} – ${D.tracks[t.k][1]}`).join("\n");
 async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(i<items.length){const k=i++;await fn(items[k],k)}}))}
-function setStatus(el,msg,err,settings){el.innerHTML=msg?`<p class="note ai-status${err?" err":""}">${esc(msg)}${settings?' <button class="btn small" data-tab="data">Open Settings</button>':""}</p>`:""}
+function setStatus(el,msg,err,settings){const box=el.querySelector(".picks [data-role=msg]");if(box&&msg){box.textContent=msg;box.classList.toggle("err",!!err);return}el.innerHTML=msg?`<p class="note ai-status${err?" err":""}">${esc(msg)}${settings?' <button class="btn small" data-tab="data">Open Settings</button>':""}</p>`:""}
 const thinking=(el,msg)=>{el.innerHTML=`<div class="thinking">${esc(msg)}</div>`};
 const cleanPicks=arr=>(Array.isArray(arr)?arr:[]).map(x=>({title:String(x&&x.title||"").trim(),artist:String(x&&x.artist||"").trim(),why:String(x&&x.why||"").trim()})).filter(x=>x.title&&x.artist);
 
@@ -244,7 +245,7 @@ function PickList(el,label,defaultName){
     const ok=items.filter(x=>x.sp&&x.on).length;
     el.innerHTML=`<div class="picks"><div class="list">${items.map(row).join("")}</div>
       <div class="footer-actions"><span class="note">${ok} of ${items.length} selected${note?" · "+esc(note):""}</span>
-      <div class="row-actions" data-role="acts"><input class="pl-name" data-role="name" aria-label="Playlist name" placeholder="Playlist name" value="${esc(plName)}"><button class="btn" data-act="liked" ${ok&&tok?"":"disabled"}>Save to Liked Songs</button><button class="btn primary" data-act="playlist" ${ok&&tok?"":"disabled"}>Create playlist</button></div></div>
+      <div class="row-actions" data-role="acts"><input class="pl-name" data-role="name" aria-label="Playlist name" placeholder="Playlist name" value="${esc(plName)}"><button class="btn" data-act="play" ${ok&&tok?"":"disabled"}>▶ Play</button><button class="btn" data-act="liked" ${ok&&tok?"":"disabled"}>Save to Liked Songs</button><button class="btn primary" data-act="playlist" ${ok&&tok?"":"disabled"}>Create playlist</button></div></div>
       <p class="note ai-status" data-role="msg"></p></div>`;
   }
   el.addEventListener("input",e=>{if(e.target.dataset.role==="name")plName=e.target.value});
@@ -253,26 +254,40 @@ function PickList(el,label,defaultName){
     const b=e.target.closest("[data-act]");if(!b)return;
     const chosen=items.filter(x=>x.sp&&x.on),msg=()=>el.querySelector('[data-role="msg"]');b.disabled=true;
     try{
+      if(b.dataset.act==="play"){await play({uris:chosen.map(x=>x.sp.uri)});b.disabled=false;return}
       if(b.dataset.act==="liked"){await saveLiked(chosen.map(x=>x.sp.uri));chosen.forEach(x=>x.saved=true);render();msg().textContent=`Saved ${chosen.length} songs to Liked Songs.`}
       else{msg().textContent="Creating playlist…";const pl=await makePlaylist(plName.trim()||"Encore mix",chosen.map(x=>x.sp.uri));render();
         msg().innerHTML=`Created <a class="sp-link" href="${esc(pl.external_urls&&pl.external_urls.spotify||"https://open.spotify.com/playlist/"+pl.id)}" target="_blank" rel="noopener">${esc(pl.name)} ↗</a> with ${chosen.length} songs.`}
     }catch(err){render();const m=msg();m.textContent=spErr(err);m.classList.add("err")}
   });
+  let q=[],active=0,note0="",streaming=false,rT=0;
+  const sched=()=>{cancelAnimationFrame(rT);rT=requestAnimationFrame(()=>render(streaming?"Claude is still picking…":note0))};
+  function pumpSearch(){while(active<2&&q.length){const it=q.shift();active++;searchActive++;
+    (async()=>{try{it.sp=await spSearch(it.title,it.artist);it.state=it.sp?"":"missing";if(!it.sp)it.on=false}
+      catch(err){it.state="err";it.err=spErr(err);it.on=false}
+      finally{active--;searchActive--;sched();pumpSearch()}})()}}
   return {
-    async load(list,name,note){
-      plName=name||defaultName;items=list.map(x=>({...x,on:true,state:tok?"looking":"",sp:null}));
-      render(tok?"":"Connect Spotify in Settings to get links and save");
-      if(!tok)return;
-      await pool(items,2,async it=>{
-        try{it.sp=await spSearch(it.title,it.artist);it.state=it.sp?"":"missing";if(!it.sp)it.on=false}
-        catch(err){it.state="err";it.err=spErr(err);it.on=false}
-        render(note);
-      });
-      render(note);
-    }
+    start(name,note){plName=name||defaultName;items=[];q=[];streaming=true;note0=note||(tok?"":"Connect Spotify in Settings to get links and save");sched()},
+    add(x){const it={...x,on:true,state:tok?"looking":"",sp:null};items.push(it);if(tok){q.push(it);pumpSearch()}sched()},
+    finish(){streaming=false;sched()},
+    load(list,name,note){this.start(name,note);list.forEach(x=>this.add(x));this.finish()}
   };
 }
 const simList=PickList($("simOut"),"sim","Encore · similar vibe"),ideaList=PickList($("ideaOut"),"idea","Encore · idea"),pasteList=PickList($("pasteOut"),"paste","Encore · pasted list");
+
+/* ================= streamed picks: one JSON object per line, shown as they arrive ================= */
+const LINE_FORMAT=`Output format: one song per line, each line a single JSON object like {"title":"…","artist":"…","why":"…"}. No other text, no code fences, no surrounding array.`;
+async function streamPicks(prompt,list,{signal,name,maxTokens}){
+  const picks=[];let seen=0,started=false;
+  const take=line=>{const l=line.trim().replace(/^[\[,\s]+|[\],\s]+$/g,"");if(!l.startsWith("{"))return;let o;try{o=JSON.parse(l)}catch(e){return}const c=cleanPicks([o])[0];if(!c)return;
+    if(!started){started=true;list.start(name)}picks.push(c);list.add(c)};
+  const text=await claude(prompt,{signal,maxTokens,onText:t=>{const lines=t.split("\n");for(;seen<lines.length-1;seen++)take(lines[seen])}});
+  const lines=text.split("\n");for(;seen<lines.length;seen++)take(lines[seen]);
+  if(!picks.length){const m=text.match(/\[[\s\S]*\]/);if(m){try{cleanPicks(JSON.parse(m[0])).forEach(c=>{if(!started){started=true;list.start(name)}picks.push(c);list.add(c)})}catch(e){}}}
+  if(started)list.finish();
+  if(!picks.length)throw {code:"invalid_json"};
+  return picks;
+}
 
 /* ================= Similar vibe ================= */
 let simCtl=null,shown=[];
@@ -280,7 +295,7 @@ async function findSimilar(more){
   const out=$("simOut"),btn=$("simBtn");
   if(!clKey()){setStatus(out,"Add your Claude API key in Settings to get picks.",true,true);return}
   if(!SEED)return;
-  simCtl&&simCtl.abort();simCtl=new AbortController();
+  simCtl&&simCtl.abort();const ctl=simCtl=new AbortController();
   if(!more)shown=[];
   btn.disabled=true;thinking(out,`Claude is listening to "${SEED.name}"…`);
   const prompt=`You are a music curator recommending songs to one listener.
@@ -296,23 +311,19 @@ Rules:
 - "why" is one concrete line, 14 words max, about the sound or mood. Don't mention the listener.
 ${shown.length?`- Don't repeat any of these earlier picks:\n${shown.join("\n")}\n`:""}
 Heavy rotation (skip these):
-${heavyRotation(120)}
+${heavyRotation(80)}
 
-Reply with only a JSON array: [{"title":"…","artist":"…","why":"…"}]`;
+${LINE_FORMAT} Exactly 10 lines.`;
   try{
-    const picks=cleanPicks(await claudeJSON(prompt,{signal:simCtl.signal}));
-    if(!picks.length)throw {code:"invalid_json"};
+    const picks=await streamPicks(prompt,simList,{signal:ctl.signal,name:`Like ${SEED.name}`,maxTokens:1200});
     shown.push(...picks.map(p=>`${p.title} – ${p.artist}`));
-    await simList.load(picks,`Like ${SEED.name}`);
-    const acts=$("simOut").querySelector('[data-role="acts"]');
-    if(acts&&!$("moreBtn")){acts.insertAdjacentHTML("afterbegin",'<button class="btn" id="moreBtn">More like these</button>');$("moreBtn").onclick=()=>findSimilar(true)}
-  }catch(e){if(e&&e.code==="cancelled")return;setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}
-  finally{btn.disabled=false}
+  }catch(e){if(e&&e.code==="cancelled")return;if(simCtl===ctl)setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}
+  finally{if(simCtl===ctl)btn.disabled=false}
 }
 window.findSimilar=findSimilar;
 $("simBtn").onclick=()=>findSimilar(false);
 $("useNowBtn").onclick=()=>{if(NOW){setSeed(NOW.name,NOW.artist,NOW.img?{u:NOW.img}:null);findSimilar(false)}};
-// keep "More like these" alive across pick-list re-renders
+// keep "More like these" in the pick list's action row
 new MutationObserver(()=>{const acts=$("simOut").querySelector('[data-role="acts"]');if(acts&&!acts.querySelector("#moreBtn")&&shown.length){acts.insertAdjacentHTML("afterbegin",'<button class="btn" id="moreBtn">More like these</button>');$("moreBtn").onclick=()=>findSimilar(true)}}).observe($("simOut"),{childList:true});
 
 /* ================= Playlist from an idea ================= */
@@ -327,8 +338,8 @@ Follow the idea first. Where it fits, lean toward this listener's taste, and inc
 ${tasteContext()}
 
 Rules: real, released songs on Spotify; exact titles and main artist names; no more than 2 songs per artist; order them so the playlist flows; "why" is 10 words max.
-Reply with only a JSON array: [{"title":"…","artist":"…","why":"…"}]`;
-  try{const picks=cleanPicks(await claudeJSON(prompt));if(!picks.length)throw {code:"invalid_json"};await ideaList.load(picks,idea.length>60?idea.slice(0,57)+"…":idea)}
+${LINE_FORMAT} Exactly 25 lines.`;
+  try{await streamPicks(prompt,ideaList,{name:idea.length>60?idea.slice(0,57)+"…":idea,maxTokens:2500})}
   catch(e){setStatus(out,claudeErr(e),true,e&&e.code==="no_key")}finally{btn.disabled=false}
 };
 
@@ -341,7 +352,7 @@ $("pasteBtn").onclick=async()=>{
     return {title:l,artist:""};}).filter(x=>x.title).slice(0,100);
   if(!items.length){setStatus(out,"Paste at least one song.",true);return}
   if(!tok){setStatus(out,"Connect Spotify in Settings to match songs.",true,true);return}
-  $("pasteBtn").disabled=true;try{await pasteList.load(items.map(x=>({...x,why:""})))}finally{$("pasteBtn").disabled=false}
+  pasteList.load(items.map(x=>({...x,why:""})))
 };
 
 /* ================= Top tracks → playlist (exact songs from your history) ================= */
@@ -380,12 +391,47 @@ $("profileStop").onclick=()=>profCtl&&profCtl.abort();
 async function pollNow(){
   if(!tok||document.hidden)return;
   try{
-    const j=await sp("/me/player/currently-playing");
+    const j=await sp("/me/player");
     const it=j&&j.item&&j.currently_playing_type==="track"?j.item:null;
-    NOW=it&&j.is_playing!==false?{name:it.name,artist:it.artists.map(a=>a.name).join(", "),album:it.album&&it.album.name,url:it.external_urls&&it.external_urls.spotify,img:pickImg(it.album&&it.album.images,250)}:null;
+    NOW=it?{name:it.name,artist:it.artists.map(a=>a.name).join(", "),album:it.album&&it.album.name,url:it.external_urls&&it.external_urls.spotify,img:pickImg(it.album&&it.album.images,250),playing:!!j.is_playing,device:j.device&&j.device.name}:null;
   }catch(e){NOW=null}
   $("useNowBtn").hidden=!NOW;renderLastCard();
 }
+
+/* ================= Playback (Premium) ================= */
+const canPlay=()=>tok&&/user-modify-playback-state/.test(tok.scope||"");
+async function play(body){
+  if(!tok){toast("Connect Spotify in Settings first.");return}
+  if(!canPlay()){toast("Press Reconnect under Spotify in Settings once to allow playback.");go("data");return}
+  const send=dev=>sp("/me/player/play"+(dev?"?device_id="+encodeURIComponent(dev):""),{method:"PUT",body:body?JSON.stringify(body):undefined});
+  try{await send()}
+  catch(e){
+    if(e.status===404){
+      const d=await sp("/me/player/devices");const ds=(d&&d.devices)||[];
+      const dev=ds.find(x=>x.is_active)||ds.find(x=>x.type==="Computer")||ds[0];
+      if(!dev){toast("Open Spotify on your PC or phone first, then press play again.");return}
+      try{await send(dev.id)}catch(e2){toast(playErr(e2));return}
+    }else{toast(playErr(e));return}
+  }
+  setTimeout(pollNow,900);
+}
+const playErr=e=>e&&e.status===403?"Spotify refused playback. It needs Premium; if you have it, press Reconnect under Spotify in Settings.":spErr(e);
+async function control(kind){
+  if(!canPlay()){toast("Press Reconnect under Spotify in Settings once to allow playback.");return}
+  try{
+    if(kind==="next")await sp("/me/player/next",{method:"POST"});
+    else if(kind==="prev")await sp("/me/player/previous",{method:"POST"});
+    else if(NOW&&NOW.playing)await sp("/me/player/pause",{method:"PUT"});
+    else await play(null);
+  }catch(e){toast(playErr(e))}
+  setTimeout(pollNow,700);
+}
+document.addEventListener("click",e=>{
+  const p=e.target.closest("[data-play]");if(p){play({uris:[p.dataset.play]});return}
+  const c=e.target.closest("[data-ctl]");if(c)control(c.dataset.ctl);
+});
+$("topPlay").onclick=()=>{const [i0,i1]=rangeBounds(range),g=agg(i0,i1);const uris=g.tracks.map(t=>D.tracks[t.k][3]).filter(Boolean).slice(0,50);if(!uris.length){toast("No Spotify links in this range.");return}play({uris})};
+
 async function pollRecent(){
   if(!tok||document.hidden||!D||D.meta.source!=="import")return;
   try{
