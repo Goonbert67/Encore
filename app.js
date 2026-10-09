@@ -1,7 +1,7 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
-/* build 4 */
+/* build 6 */
 const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -214,8 +214,8 @@ async function spSearch(title,artist){
   const score=e=>((e.artists||[]).some(c=>{const n=norm(c.name);return a&&(n.includes(a)||a.includes(n))})?2:0)+(coreTitle(e.name)===t?1:0);
   const qs=[artist?`track:${title} artist:${artist}`:title,`${title} ${artist}`.trim()];
   for(const q of qs){
-    const j=await sp("/search?type=track&limit=5&q="+encodeURIComponent(q));
-    const items=(j&&j.tracks&&j.tracks.items)||[];
+    const j=await sp("/search?type=track&limit=5&market=from_token&q="+encodeURIComponent(q));
+    const items=((j&&j.tracks&&j.tracks.items)||[]).filter(x=>x.is_playable!==false);
     const best=items.slice().sort((x,y)=>score(y)-score(x))[0];
     if(best&&(score(best)>0||!artist))return {uri:best.uri,name:best.name,artist:best.artists.map(c=>c.name).join(", "),url:best.external_urls&&best.external_urls.spotify,img:pickImg(best.album&&best.album.images)};
   }
@@ -233,27 +233,31 @@ async function makePlaylist(name,uris,description){
 }
 
 /* ================= pick list ================= */
-function PickList(el,label,defaultName){
+function PickList(el,label,defaultName,opts={}){
+  const saving=opts.saving!==false;
   let items=[],plName="";
   function row(it,i){
     const plays=playsOf(it.title,it.artist);
     const tags=[plays===null?"":plays>0?`<span class="tag">You've played it ${fmt(plays)}×</span>`:`<span class="tag new">New to you</span>`,it.saved?`<span class="tag saved">♥ Saved</span>`:""].join("");
-    const st=it.sp&&it.sp.url?`<a class="sp-link" href="${esc(it.sp.url)}" target="_blank" rel="noopener">Open ↗</a>`:it.state==="looking"?'<span class="note">Finding…</span>':it.state==="missing"?'<span class="note">Not found</span>':it.state==="err"?`<span class="note" title="${esc(it.err)}">Error</span>`:"";
-    return `<div class="track"><input type="checkbox" class="check" id="${label}${i}" ${it.on?"checked":""} ${it.sp?"":"disabled"} aria-label="Include ${esc(it.title)}">${cover(it.artist,"",it.sp&&it.sp.img?{u:it.sp.img}:{a:it.artist})}
+    const st=it.sp?(saving?`<a class="sp-link" href="${esc(it.sp.url)}" target="_blank" rel="noopener">Open ↗</a>`:`<button class="icon-btn like-btn${it.saved?" on":""}" data-like="${i}" title="${it.saved?"In Liked Songs":"Add to Liked Songs"}" aria-label="Like ${esc(it.sp.name)}">${it.saved?"♥":"♡"}</button>`)+`<button class="icon-btn play-btn" data-pi="${i}" title="Play from here" aria-label="Play ${esc(it.sp.name)}">${PLAYICON}</button>`:it.state==="looking"?'<span class="note">Finding…</span>':it.state==="missing"?'<span class="note">Not on Spotify</span>':it.state==="err"?`<span class="note" title="${esc(it.err)}">Error</span>`:"";
+    return `<div class="track">${saving?`<input type="checkbox" class="check" id="${label}${i}" ${it.on?"checked":""} ${it.sp?"":"disabled"} aria-label="Include ${esc(it.title)}">`:""}${cover(it.artist,"",it.sp&&it.sp.img?{u:it.sp.img}:{a:it.artist})}
       <label class="t-main" for="${label}${i}"><div class="t-name">${esc(it.sp?it.sp.name:it.title)}</div><div class="t-sub">${esc(it.sp?it.sp.artist:it.artist)}</div>${it.why?`<div class="why">${esc(it.why)}</div>`:""}<div class="pick-meta">${tags}</div></label>
       <div class="t-end">${st}</div></div>`;
   }
   function render(note){
     const ok=items.filter(x=>x.sp&&x.on).length;
-    el.innerHTML=`<div class="picks"><div class="list">${items.map(row).join("")}</div>
-      <div class="footer-actions"><span class="note">${ok} of ${items.length} selected${note?" · "+esc(note):""}</span>
-      <div class="row-actions" data-role="acts"><input class="pl-name" data-role="name" aria-label="Playlist name" placeholder="Playlist name" value="${esc(plName)}"><button class="btn" data-act="play" ${ok&&tok?"":"disabled"}>▶ Play</button><button class="btn" data-act="liked" ${ok&&tok?"":"disabled"}>Save to Liked Songs</button><button class="btn primary" data-act="playlist" ${ok&&tok?"":"disabled"}>Create playlist</button></div></div>
+    el.innerHTML=`<div class="picks${saving?"":" nocheck"}"><div class="list">${items.map(row).join("")}</div>
+      <div class="footer-actions"><span class="note">${saving?`${ok} of ${items.length} selected`:`${items.filter(x=>x.sp).length} of ${items.length} found on Spotify`}${note?" · "+esc(note):""}</span>
+      <div class="row-actions" data-role="acts">${saving?"":`<button class="btn primary" data-act="playall" ${items.some(x=>x.sp)&&tok?"":"disabled"}>▶ Play all</button>`}${!saving?"":`<input class="pl-name" data-role="name" aria-label="Playlist name" placeholder="Playlist name" value="${esc(plName)}"><button class="btn" data-act="play" ${ok&&tok?"":"disabled"}>▶ Play</button><button class="btn" data-act="liked" ${ok&&tok?"":"disabled"}>Save to Liked Songs</button><button class="btn primary" data-act="playlist" ${ok&&tok?"":"disabled"}>Create playlist</button>`}</div></div>
       <p class="note ai-status" data-role="msg"></p></div>`;
   }
   el.addEventListener("input",e=>{if(e.target.dataset.role==="name")plName=e.target.value});
   el.addEventListener("change",e=>{const m=e.target.id&&e.target.id.match(new RegExp("^"+label+"(\\d+)$"));if(m){items[+m[1]].on=e.target.checked;render()}});
   el.addEventListener("click",async e=>{
+    const pi=e.target.closest("[data-pi]");if(pi){const from=items.slice(+pi.dataset.pi).filter(x=>x.sp);play({uris:from.map(x=>x.sp.uri)});return}
+    const lk=e.target.closest("[data-like]");if(lk){const it=items[+lk.dataset.like];if(!it||!it.sp||it.saved)return;try{await saveLiked([it.sp.uri]);it.saved=true;render()}catch(err){toast(spErr(err))}return}
     const b=e.target.closest("[data-act]");if(!b)return;
+    if(b.dataset.act==="playall"){play({uris:items.filter(x=>x.sp).map(x=>x.sp.uri)});return}
     const chosen=items.filter(x=>x.sp&&x.on),msg=()=>el.querySelector('[data-role="msg"]');b.disabled=true;
     try{
       if(b.dataset.act==="play"){await play({uris:chosen.map(x=>x.sp.uri)});b.disabled=false;return}
@@ -275,7 +279,7 @@ function PickList(el,label,defaultName){
     load(list,name,note){this.start(name,note);list.forEach(x=>this.add(x));this.finish()}
   };
 }
-const simList=PickList($("simOut"),"sim","Encore · similar vibe"),ideaList=PickList($("ideaOut"),"idea","Encore · idea"),pasteList=PickList($("pasteOut"),"paste","Encore · pasted list");
+const simList=PickList($("simOut"),"sim","Encore · similar vibe",{saving:false}),ideaList=PickList($("ideaOut"),"idea","Encore · idea"),pasteList=PickList($("pasteOut"),"paste","Encore · pasted list");
 
 /* ================= streamed picks: one JSON object per line, shown as they arrive ================= */
 const LINE_FORMAT=`Output format: one song per line, each line a single JSON object like {"title":"…","artist":"…","why":"…"}. No other text, no code fences, no surrounding array.`;
@@ -402,20 +406,35 @@ async function pollNow(){
 
 /* ================= Playback (Premium) ================= */
 const canPlay=()=>tok&&/user-modify-playback-state/.test(tok.scope||"");
+async function pickDevice(){
+  const d=await sp("/me/player/devices");const ds=((d&&d.devices)||[]).filter(x=>!x.is_restricted);
+  return ds.find(x=>x.is_active)||ds.find(x=>x.type==="Computer")||ds[0]||null;
+}
 async function play(body){
   if(!tok){toast("Connect Spotify in Settings first.");return}
   if(!canPlay()){toast("Press Reconnect under Spotify in Settings once to allow playback.");go("data");return}
-  const send=dev=>sp("/me/player/play"+(dev?"?device_id="+encodeURIComponent(dev):""),{method:"PUT",body:body?JSON.stringify(body):undefined});
-  try{await send()}
-  catch(e){
-    if(e.status===404){
-      const d=await sp("/me/player/devices");const ds=(d&&d.devices)||[];
-      const dev=ds.find(x=>x.is_active)||ds.find(x=>x.type==="Computer")||ds[0];
-      if(!dev){toast("Open Spotify on your PC or phone first, then press play again.");return}
-      try{await send(dev.id)}catch(e2){toast(playErr(e2));return}
-    }else{toast(playErr(e));return}
-  }
-  setTimeout(pollNow,900);
+  try{
+    const dev=await pickDevice();
+    if(!dev){toast("Open Spotify on your PC or phone first, then press play again.");return}
+    const q="?device_id="+encodeURIComponent(dev.id);
+    if(!body){await sp("/me/player/play"+q,{method:"PUT"});setTimeout(pollNow,800);return}
+    const uris=body.uris||[];const first=uris[0];
+    await sp("/me/player/play"+q,{method:"PUT",body:JSON.stringify({uris,position_ms:0})});
+    // check that Spotify actually started it; the desktop app sometimes stops instead
+    await sleep(1500);
+    let st=await sp("/me/player");
+    const ok=()=>st&&st.is_playing&&st.item&&(st.item.uri===first||(st.item.linked_from&&st.item.linked_from.uri===first));
+    if(!ok()){
+      // fallback that the desktop app handles reliably: queue the song, then skip to it
+      await sp("/me/player/queue?uri="+encodeURIComponent(first)+"&device_id="+encodeURIComponent(dev.id),{method:"POST"});
+      await sp("/me/player/next?device_id="+encodeURIComponent(dev.id),{method:"POST"});
+      await sleep(1200);st=await sp("/me/player");
+      if(st&&st.item&&uris.length>1)for(const u of uris.slice(1,20))await sp("/me/player/queue?uri="+encodeURIComponent(u)+"&device_id="+encodeURIComponent(dev.id),{method:"POST"});
+    }
+    if(st&&st.item)toast(`Playing ${st.item.name} on ${dev.name}`);
+    else toast(`Spotify on ${dev.name} didn't start the song. Try pressing play in the Spotify app once, then again here.`);
+  }catch(e){toast(playErr(e))}
+  setTimeout(pollNow,600);
 }
 const playErr=e=>e&&e.status===403?"Spotify refused playback. It needs Premium; if you have it, press Reconnect under Spotify in Settings.":spErr(e);
 async function control(kind){

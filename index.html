@@ -243,6 +243,9 @@ a.btn{text-decoration:none;color:inherit}
 .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;max-width:none}
 .pl-name{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:.85rem;min-width:0;width:200px;max-width:100%}
 .play-btn:hover{color:var(--good)}
+.picks.nocheck .track{grid-template-columns:44px minmax(0,1fr) auto}
+.like-btn{font-size:1.1rem;line-height:1}
+.like-btn.on{color:var(--good)}
 .transport{display:flex;align-items:center;gap:6px}
 .transport .icon-btn{color:var(--fg)}
 .transport .icon-btn.big{width:42px;height:42px;background:var(--fg);color:var(--bg)}
@@ -436,7 +439,7 @@ Robyn – Dancing On My Own</textarea>
           <div class="meter"><i id="meterBar"></i></div>
           <p class="note" id="importMsg" style="margin:8px 0 0"></p>
         </div>
-        <p class="note" style="margin:0">Encore build 4 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
+        <p class="note" style="margin:0">Encore build 6 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>What's loaded</h2><span class="badge" id="srcBadge">Sample</span></div>
@@ -808,6 +811,6 @@ $("clearBtn").onclick=async e=>{
   const saved=await dbLoad();if(saved&&saved.ts&&saved.ts.length){D=saved;renderAll()}
 })();
 </script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
