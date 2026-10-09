@@ -439,7 +439,7 @@ Robyn – Dancing On My Own</textarea>
           <div class="meter"><i id="meterBar"></i></div>
           <p class="note" id="importMsg" style="margin:8px 0 0"></p>
         </div>
-        <p class="note" style="margin:0">Encore build 6 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
+        <p class="note" style="margin:0">Encore build 7 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>What's loaded</h2><span class="badge" id="srcBadge">Sample</span></div>
@@ -484,7 +484,7 @@ const cover=(name,cls="",img)=>{const a=img?img.u?` data-img-u="${esc(img.u)}"`:
 const PLAYICON='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const SPARK='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>';
 const PLAY_MS=30000, DAY=86400;
-let tt;function toast(m){const el=$("toast");el.textContent=m;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,2600)}
+let tt;function toast(m){const el=$("toast");el.textContent=m;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,m.length>80?9000:2600)}
 
 /* ---------- tabs ---------- */
 const TABS=[
@@ -811,6 +811,6 @@ $("clearBtn").onclick=async e=>{
   const saved=await dbLoad();if(saved&&saved.ts&&saved.ts.length){D=saved;renderAll()}
 })();
 </script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* Encore — Spotify (PKCE login) + Claude API layer for the GitHub Pages build.
    Everything here runs in the browser. Tokens and the API key live in localStorage on this device only. */
 
-/* build 6 */
+/* build 7 */
 const $$=id=>document.getElementById(id)||document.createElement("div");
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -56,7 +56,7 @@ async function sp(path,opt={}){
     if(r.status===429){const w=Math.min(30,+(r.headers.get("Retry-After")||2));spPauseUntil=Date.now()+w*1000;await sleep(w*1000);continue}
     if(r.status===204||r.status===202)return null;
     const txt=await r.text();let j=null;try{j=txt?JSON.parse(txt):null}catch(e){}
-    if(!r.ok)throw {code:r.status===403?"forbidden":"http",status:r.status,message:(j&&j.error&&(j.error.message||j.error))||r.statusText};
+    if(!r.ok)throw {code:r.status===403?"forbidden":"http",status:r.status,path:path.split("?")[0],reason:j&&j.error&&j.error.reason,message:(j&&j.error&&(j.error.message||j.error))||r.statusText};
     return j;
   }
   throw {code:"rate_limited"};
@@ -436,7 +436,7 @@ async function play(body){
   }catch(e){toast(playErr(e))}
   setTimeout(pollNow,600);
 }
-const playErr=e=>e&&e.status===403?"Spotify refused playback. It needs Premium; if you have it, press Reconnect under Spotify in Settings.":spErr(e);
+const playErr=e=>e&&e.status?`Spotify said "${e.message||e.status}"${e.reason?" ("+e.reason+")":""} on ${e.path||"playback"}.`:spErr(e);
 async function control(kind){
   if(!canPlay()){toast("Press Reconnect under Spotify in Settings once to allow playback.");return}
   try{
