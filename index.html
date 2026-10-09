@@ -225,6 +225,7 @@ a.btn{text-decoration:none;color:inherit}
 .picks .t-sub{white-space:normal}
 .pick-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .tag{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--panel-2);color:var(--muted)}
+.tag.kind{background:var(--accent-soft);color:var(--accent)}
 .tag.new{background:var(--ai-soft);color:var(--ai)}
 .tag.saved{color:var(--good)}
 .sp-link{font-size:.82rem;font-weight:600;color:var(--accent);text-decoration:none;white-space:nowrap}
@@ -282,6 +283,13 @@ a.btn{text-decoration:none;color:inherit}
       </div>
 
       <div class="panel now" id="lastCard"></div>
+
+      <div class="panel ai-card">
+        <div class="panel-head"><h2>Picked for you</h2><span class="note">by Claude, from your whole history</span></div>
+        <p class="note" style="margin:0">A fresh mix every time: new songs in your lane, deep cuts from artists you love, and a few old favorites you haven't played in years.</p>
+        <div class="row-actions"><button class="btn ai" id="fyBtn">Pick songs for me</button></div>
+        <div id="fyOut"></div>
+      </div>
 
       <div class="stats" id="homeStats"></div>
 
@@ -439,7 +447,7 @@ Robyn – Dancing On My Own</textarea>
           <div class="meter"><i id="meterBar"></i></div>
           <p class="note" id="importMsg" style="margin:8px 0 0"></p>
         </div>
-        <p class="note" style="margin:0">Encore build 8 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
+        <p class="note" style="margin:0">Encore build 11 · Your files are read on this device and stored only in this browser. IP addresses and locations in the export are dropped on import.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>What's loaded</h2><span class="badge" id="srcBadge">Sample</span></div>
@@ -811,6 +819,6 @@ $("clearBtn").onclick=async e=>{
   const saved=await dbLoad();if(saved&&saved.ts&&saved.ts.length){D=saved;renderAll()}
 })();
 </script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
